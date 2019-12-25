@@ -1,0 +1,161 @@
+#!/bin/bash
+# Copyright 2019 Qualitia.Co.,Ltd. or its affiliates. All Rights Reserved.
+
+readonly ROOT_CF=root.cf.yaml
+
+usage_exit() {
+    echo "Usage: $0 stack_directory_path [param_file_path]" 1>&2
+    echo "Usage: $0 -h" 1>&2
+    echo "Environment valuables:" 1>&2
+    echo "- AWS_PROFILE (optional)"
+    echo "- AWS_ACCOUNT_NAME (optional, required if AWS_PROFILE is not set)"
+    echo "- AWS_DEFAULT_REGION (default: ap-northeast-1)"
+    exit 2
+}
+
+while getopts h OPT
+do
+    case $OPT in
+        h)  usage_exit
+            ;;
+        *)  usage_exit
+            ;;
+    esac
+done
+
+if [ $# -eq 0 ]; then
+    usage_exit
+fi
+
+if [ -z $AWS_PROFILE ]; then
+    if [ -z $AWS_ACCOUNT_NAME ]; then
+        echo 'Set AWS_PROFILE environment valuable'
+        usage_exit
+        exit 1
+    fi
+fi
+
+if [ ! -d $1 ]; then
+    echo "$1 does not exist."
+    exit 3
+fi
+
+if [ ! -e $1/${ROOT_CF} ]; then
+    echo "$1/${ROOT_CF} does not exist."
+    exit 3
+fi
+
+if [ $# -ge 2 ]; then
+    if [ ! -e $2 ]; then
+        echo "$2 does not exist."
+        exit 3
+    fi
+fi
+
+readonly AWS_ACCOUNT_NAME=${AWS_ACCOUNT_NAME:-${AWS_PROFILE}}
+readonly AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-ap-northeast-1}
+readonly BUCKET=stack-q-${AWS_ACCOUNT_NAME}
+readonly DIR_NAME=$(basename $1)
+readonly PARAMETER_FILE=${2:-${1}/param-${AWS_ACCOUNT_NAME}.yaml}
+
+echo AWS_PROFILE: ${AWS_PROFILE}
+echo AWS_ACCOUNT_NAME: ${AWS_ACCOUNT_NAME}
+echo AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
+
+aws s3 ls --region ${AWS_DEFAULT_REGION} | grep ${BUCKET}
+
+if [ $? -ne 0 ]; then
+    if [ "_${AWS_DEFAULT_REGION}" == "_us-east-1" ]; then
+        aws s3api create-bucket --bucket ${BUCKET} --region ${AWS_DEFAULT_REGION}
+    else
+        aws s3api create-bucket --bucket ${BUCKET} --create-bucket-configuration LocationConstraint=${AWS_DEFAULT_REGION} --region ${AWS_DEFAULT_REGION}
+    fi
+fi
+
+prefix=$((git rev-parse --show-prefix || echo "PROTO/") | sed 's|/|-|g')
+stack_name=${prefix}${DIR_NAME}-root
+tmp_dir_name=${prefix}${DIR_NAME}
+yaml_url=https://s3.amazonaws.com/${BUCKET}/${tmp_dir_name}/${ROOT_CF}
+# set -e
+aws s3 sync $1 s3://${BUCKET}/${tmp_dir_name} --delete
+TEMP_PARAMETER_FILE=/tmp/$(basename ${PARAMETER_FILE})
+CREATE_OPTIONS+=(--parameters file://${TEMP_PARAMETER_FILE}.json)
+if [ -e ${PARAMETER_FILE} ]; then
+    cp ${PARAMETER_FILE} ${TEMP_PARAMETER_FILE}
+else
+    rm -f ${TEMP_PARAMETER_FILE}
+    touch ${TEMP_PARAMETER_FILE}
+fi
+cat <<__EOF__ >>${TEMP_PARAMETER_FILE}
+-
+    ParameterKey: PrefixStackBucket
+    ParameterValue: https://s3.amazonaws.com/${BUCKET}/${tmp_dir_name}
+__EOF__
+python3 -c 'import sys, yaml, json; json.dump(yaml.safe_load(sys.stdin), sys.stdout, indent=4)' < ${TEMP_PARAMETER_FILE} > ${TEMP_PARAMETER_FILE}.json
+while :; do
+        STATUS=$(aws cloudformation describe-stacks --stack-name ${stack_name} ${OPTIONS[@]} 2>/dev/null | jq -r '.Stacks[] .StackStatus')
+        case "$STATUS" in
+        *_IN_PROGRESS )
+            printf .
+            sleep 1
+            ;;
+        "" | DELETE_COMPLETE )
+            printf "\ncreate stack ${f}\n"
+            set -e
+            aws cloudformation create-stack --capabilities CAPABILITY_NAMED_IAM --stack-name ${stack_name} ${OPTIONS[@]} ${CREATE_OPTIONS[@]} --template-url ${yaml_url}
+            set +e
+            break
+            ;;
+        UPDATE_COMPLETE | UPDATE_ROLLBACK_COMPLETE | CREATE_COMPLETE )
+            printf "\nupdate stack ${f}\n"
+            set +e
+            result=$(aws cloudformation update-stack --capabilities CAPABILITY_NAMED_IAM --stack-name ${stack_name} ${OPTIONS[@]} ${CREATE_OPTIONS[@]} --template-url ${yaml_url} 2>&1)
+            status_code=$?
+            set -e
+            if [ ${status_code} == 0 ]; then
+                break
+            else
+                if echo ${result} | grep -q "No updates are to be performed"; then
+                    printf "\nNo updates\n"
+                    break
+                else
+                    echo
+                    echo ${result}
+                    exit ${status_code}
+                fi
+            fi
+            break
+            ;;
+        DELETE_FAILED | CREATE_FAILED | ROLLBACK_FAILED | ROLLBACK_COMPLETE )
+            printf "\ndelete stack ${f}\n"
+            aws cloudformation delete-stack --stack-name ${stack_name} ${OPTIONS[@]}
+            ;;
+        * )
+            printf "\nPANIC!!!!! We don't know what to do. Because ${stack_name} is ${STATUS}.\n"
+            exit 255
+            ;;
+        esac
+    done
+    while :; do
+        STATUS=$(aws cloudformation describe-stacks --stack-name ${stack_name} ${OPTIONS[@]} 2>/dev/null | jq -r '.Stacks[] .StackStatus')
+        case "$STATUS" in
+        *_ROLLBACK_IN_PROGRESS )
+            printf R
+            sleep 1
+            ;;
+        *_IN_PROGRESS )
+            printf .
+            sleep 1
+            ;;
+        CREATE_COMPLETE | UPDATE_COMPLETE )
+            printf "\nDone\n"
+            break
+            ;;
+        * )
+            echo
+            aws cloudformation describe-stack-events --stack-name ${stack_name} | jq -r '.StackEvents[] | select(.ResourceStatusReason != null) | [.LogicalResourceId, .ResourceStatusReason] | @csv'
+            printf "\nERROR!!! ${stack_name}:${STATUS}.\n" 1>&2
+            exit 1
+            ;;
+        esac
+    done
