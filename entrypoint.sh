@@ -12,6 +12,8 @@ env
 
 ls /usr/local/bin
 
+chmod +x /usr/local/bin/create_stack
+
 create_stack ${TARGET_DIR}
 
 echo "End deploy"
