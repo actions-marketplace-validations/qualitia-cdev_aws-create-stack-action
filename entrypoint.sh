@@ -8,6 +8,7 @@ export AWS_DEFAULT_REGION=$3
 export AWS_ACCOUNT_NAME=$4
 readonly TARGET_DIR=$5
 
+ls /usr/local/bin/ | grep create_stack
 /usr/local/bin/create_stack ${TARGET_DIR}
 
 echo "End deploy"
