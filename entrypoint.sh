@@ -1,4 +1,4 @@
-#!/bin/sh -l
+#!/bin/ash -l
 
 echo "Start deploying"
 
@@ -11,6 +11,7 @@ echo ${AWS_SECRET_ACCESS_KEY}
 echo ${AWS_DEFAULT_REGION}
 
 pwd
-ls
+env
+ls -a
 
 echo "End deploy"

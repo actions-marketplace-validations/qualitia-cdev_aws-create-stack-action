@@ -1,8 +1,8 @@
 # Container image that runs your code
-FROM alpine:3.10
+FROM banst/awscli:latest
 
-RUN apk add --no-cache python3 \
-    && pip3 --no-cache-dir install awscli
+# RUN apk add --no-cache python3 \
+#     && pip3 --no-cache-dir install awscli
 
 COPY create_stack /usr/local/bin
 COPY entrypoint.sh /entrypoint.sh
