@@ -18,6 +18,16 @@ inputs:
         required: true
         default: "ap-northeast-1"
 
+    project-name:
+        description: "This is used for param-{project-name}.yaml, bucketname and stack name"
+        required: true
+        default: ""
+
+    target-dir:
+        description: "The directory which is deployed"
+        required: true
+        default: "infra"
+
 outputs:
     result:
         description: "Show the result of deploying"
@@ -29,3 +39,5 @@ runs:
         - ${{ inputs.aws-access-key }}
         - ${{ inputs.aws-secret-access-key }}
         - ${{ inputs.aws-region }}
+        - ${{ inputs.project-name }}
+        - ${{ inputs.target-dir }}
