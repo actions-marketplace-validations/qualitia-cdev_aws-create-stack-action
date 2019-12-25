@@ -7,8 +7,9 @@ usage_exit() {
     echo "Usage: $0 stack_directory_path [param_file_path]" 1>&2
     echo "Usage: $0 -h" 1>&2
     echo "Environment valuables:" 1>&2
-    echo "- AWS_PROFILE (optional)"
-    echo "- AWS_ACCOUNT_NAME (optional, required if AWS_PROFILE is not set)"
+    # echo "- AWS_PROFILE (optional)"
+    # echo "- AWS_ACCOUNT_NAME (optional, required if AWS_PROFILE is not set)"
+    echo "- AWS_ACCOUNT_NAME"
     echo "- AWS_DEFAULT_REGION (default: ap-northeast-1)"
     exit 2
 }
@@ -27,13 +28,13 @@ if [ $# -eq 0 ]; then
     usage_exit
 fi
 
-if [ -z $AWS_PROFILE ]; then
-    if [ -z $AWS_ACCOUNT_NAME ]; then
-        echo 'Set AWS_PROFILE environment valuable'
-        usage_exit
-        exit 1
-    fi
-fi
+# if [ -z $AWS_PROFILE ]; then
+#     if [ -z $AWS_ACCOUNT_NAME ]; then
+#         echo 'Set AWS_PROFILE environment valuable'
+#         usage_exit
+#         exit 1
+#     fi
+# fi
 
 if [ ! -d $1 ]; then
     echo "$1 does not exist."
@@ -52,13 +53,13 @@ if [ $# -ge 2 ]; then
     fi
 fi
 
-readonly AWS_ACCOUNT_NAME=${AWS_ACCOUNT_NAME:-${AWS_PROFILE}}
+# readonly AWS_ACCOUNT_NAME=${AWS_ACCOUNT_NAME:-${AWS_PROFILE}}
 readonly AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-ap-northeast-1}
 readonly BUCKET=stack-q-${AWS_ACCOUNT_NAME}
 readonly DIR_NAME=$(basename $1)
 readonly PARAMETER_FILE=${2:-${1}/param-${AWS_ACCOUNT_NAME}.yaml}
 
-echo AWS_PROFILE: ${AWS_PROFILE}
+# echo AWS_PROFILE: ${AWS_PROFILE}
 echo AWS_ACCOUNT_NAME: ${AWS_ACCOUNT_NAME}
 echo AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION}
 
